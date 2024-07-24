@@ -1,0 +1,7 @@
+Flask==2.0.1
+Werkzeug==2.0.1
+graphene==2.1.9
+Flask-GraphQL==2.0.1
+psycopg2-binary==2.9.1
+SQLAlchemy==1.4.23
+graphql-core<3,>=2.1

@@ -1,0 +1,27 @@
+{
+  books {
+    id
+    title
+    author
+  }
+}
+
+# {
+#   book(id: 1) {
+#     id
+#     title
+#     author
+#     publishedYear
+#   }
+# }
+
+mutation {
+  createBook(title: "The Great Gatsby", author: "F. Scott Fitzgerald", publishedYear: 1925) {
+    book {
+      id
+      title
+      author
+      publishedYear
+    }
+  }
+}
