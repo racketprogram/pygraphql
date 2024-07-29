@@ -4,7 +4,7 @@ from flask_graphql import GraphQLView
 import graphene
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -13,7 +13,8 @@ app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL', 'postgresql://bookuser:bookpass@localhost/bookdb')
 engine = create_engine(database_url)
 Base = declarative_base()
-Session = sessionmaker(bind=engine)
+session_factory = sessionmaker(bind=engine)
+Session = scoped_session(session_factory)
 
 # Base Query class and decorator
 class BaseQuery(graphene.ObjectType):
@@ -29,7 +30,9 @@ def register_query(cls):
 class BaseModel(Base):
     __abstract__ = True
     
-    def to_dict(self):
+    def to_dict(self, fields=None):
+        if fields:
+            return {field: getattr(self, field) for field in fields}
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 # Book Model and Type
@@ -50,8 +53,8 @@ class Book(graphene.ObjectType):
 class AuthorModel(BaseModel):
     __tablename__ = 'authors'
     id = Column(Integer, primary_key=True)
-    name = graphene.String()
-    birth_year = graphene.Int()
+    name = Column(String)
+    birth_year = Column(Integer)
 
 class Author(graphene.ObjectType):
     id = graphene.Int()
@@ -67,14 +70,18 @@ class BookQuery(BaseQuery):
     book = graphene.Field(Book, id=graphene.Int())
 
     def resolve_books(self, info):
-        session = Session()
-        books = session.query(BookModel).all()
-        return [Book(**book.to_dict()) for book in books]
+        with Session() as session:
+            books = session.query(BookModel).with_entities(
+                BookModel.id, BookModel.title, BookModel.author, BookModel.published_year
+            ).all()
+            return [Book(**book._asdict()) for book in books]
 
     def resolve_book(self, info, id):
-        session = Session()
-        book = session.query(BookModel).filter(BookModel.id == id).first()
-        return Book(**book.to_dict()) if book else None
+        with Session() as session:
+            book = session.query(BookModel).with_entities(
+                BookModel.id, BookModel.title, BookModel.author, BookModel.published_year
+            ).filter(BookModel.id == id).first()
+            return Book(**book._asdict()) if book else None
 
 # Author Query
 @register_query
@@ -83,14 +90,18 @@ class AuthorQuery(BaseQuery):
     author = graphene.Field(Author, id=graphene.Int())
 
     def resolve_authors(self, info):
-        session = Session()
-        authors = session.query(AuthorModel).all()
-        return [Author(**author.to_dict()) for author in authors]
+        with Session() as session:
+            authors = session.query(AuthorModel).with_entities(
+                AuthorModel.id, AuthorModel.name, AuthorModel.birth_year
+            ).all()
+            return [Author(**author._asdict()) for author in authors]
 
     def resolve_author(self, info, id):
-        session = Session()
-        author = session.query(AuthorModel).filter(AuthorModel.id == id).first()
-        return Author(**author.to_dict()) if author else None
+        with Session() as session:
+            author = session.query(AuthorModel).with_entities(
+                AuthorModel.id, AuthorModel.name, AuthorModel.birth_year
+            ).filter(AuthorModel.id == id).first()
+            return Author(**author._asdict()) if author else None
 
 # Combine all queries
 class Query(*query_classes, BaseQuery):
@@ -106,11 +117,11 @@ class CreateBook(graphene.Mutation):
     book = graphene.Field(Book)
 
     def mutate(self, info, title, author, published_year):
-        session = Session()
-        new_book = BookModel(title=title, author=author, published_year=published_year)
-        session.add(new_book)
-        session.commit()
-        return CreateBook(book=Book(**new_book.to_dict()))
+        with Session() as session:
+            new_book = BookModel(title=title, author=author, published_year=published_year)
+            session.add(new_book)
+            session.commit()
+            return CreateBook(book=Book(**new_book.to_dict()))
 
 class CreateAuthor(graphene.Mutation):
     class Arguments:
@@ -120,11 +131,11 @@ class CreateAuthor(graphene.Mutation):
     author = graphene.Field(Author)
 
     def mutate(self, info, name, birth_year):
-        session = Session()
-        new_author = AuthorModel(name=name, birth_year=birth_year)
-        session.add(new_author)
-        session.commit()
-        return CreateAuthor(author=Author(**new_author.to_dict()))
+        with Session() as session:
+            new_author = AuthorModel(name=name, birth_year=birth_year)
+            session.add(new_author)
+            session.commit()
+            return CreateAuthor(author=Author(**new_author.to_dict()))
 
 class Mutation(graphene.ObjectType):
     create_book = CreateBook.Field()
